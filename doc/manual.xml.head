@@ -12295,17 +12295,12 @@ virtual-mailboxes "My INBOX" "notmuch://?query=tag:inbox"
           </row>
           <row>
             <entry>index,pager</entry>
-            <entry><literal>&lt;windowed-vfolder-from-query&gt;</literal></entry>
-            <entry>generate virtual folder from query with window applied</entry>
-          </row>
-          <row>
-            <entry>index,pager</entry>
-            <entry><literal>&lt;windowed-vfolder-forward&gt;</literal></entry>
+            <entry><literal>&lt;vfolder-window-forward&gt;</literal></entry>
             <entry>generate virtual folder by moving the query's time window forward</entry>
           </row>
           <row>
             <entry>index,pager</entry>
-            <entry><literal>&lt;windowed-vfolder-backward&gt;</literal></entry>
+            <entry><literal>&lt;vfolder-window-backward&gt;</literal></entry>
             <entry>generate virtual folder by moving the query's time window backward</entry>
           </row>
         </tbody>
@@ -12460,7 +12455,8 @@ set vfolder_format = &quot;%6n(%6N) %f&quot;
 set virtual_spoolfile = no
 
 <emphasis role="comment"># setup time window preferences
-# first setup the duration, and then the time unit of that duration</emphasis>
+# first setup the duration, and then the time unit of that duration
+# when set to 0 (the default) the search window feature is disabled</emphasis>
 set nm_query_window_duration=2
 set nm_query_window_timebase="week" # or "hour", "day", "week", "month", "year"
 
@@ -12481,9 +12477,8 @@ bind index,pager \` modify-labels
 bind index,pager \eX vfolder-from-query
 
 <emphasis role="comment"># generate virtual folder from query with time window</emphasis>
-bind index,pager \\ windowed-vfolder-from-query
-bind index,pager &lt; windowed-vfolder-backward
-bind index,pager &gt; windowed-vfolder-forward
+bind index,pager &lt; vfolder-window-backward
+bind index,pager &gt; vfolder-window-forward
 
 <emphasis role="comment"># modify labels and then hide message
 # bind index,pager ??? modify-labels-then-hide

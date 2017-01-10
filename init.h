@@ -2048,8 +2048,9 @@ struct option_t MuttVars[] = {
   /*
    ** .pp
    ** This variable specifies the default tags applied to messages stored to the mutt record.
+   ** When set to 0 this variable disable the window feature.
    */
-  { "nm_query_window_duration", DT_NUM, R_NONE, UL &NotmuchQueryWindowDuration, 2 },
+  { "nm_query_window_duration", DT_NUM, R_NONE, UL &NotmuchQueryWindowDuration, 0 },
   /*
    ** .pp
    ** This variable sets the time base of a windowed notmuch query.
