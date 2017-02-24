@@ -518,6 +518,15 @@ AC_ARG_WITH(regex, AS_HELP_STRING([--with-regex],[Use the GNU regex library]),
 	[mutt_cv_regex=yes],
 	[AC_CHECK_FUNCS(regcomp, mutt_cv_regex=no, mutt_cv_regex=yes)])
 
+AC_ARG_WITH(unittest, AS_HELP_STRING([--with-unittest],[Build in unit-test mode]),
+    [
+        mutt_unit_test=yes
+        AC_DEFINE(WITH_UNITTEST,1,[ Define to build in unit-test mode])
+        LIBUNITTEST="-Lunit-test -lunittest"
+        LIBUNITTESTDEPS="unit-test/libunittest.a"
+    ])
+AM_CONDITIONAL(BUILD_UNITTEST, test x$mutt_unit_test = xyes)
+
 if test $mutt_cv_regex = no; then
 AC_CACHE_CHECK([whether your system's regexp library is completely broken],
 	[mutt_cv_regex_broken],
@@ -1156,6 +1165,8 @@ AC_SUBST(MUTT_LIB_OBJECTS)
 AC_SUBST(LIBIMAP)
 AC_SUBST(LIBIMAPDEPS)
 AC_SUBST(NOTMUCH_LIBS)
+AC_SUBST(LIBUNITTEST)
+AC_SUBST(LIBUNITTESTDEPS)
 
 dnl -- iconv/gettext --
 
@@ -1458,7 +1469,7 @@ if test x$full_doc != xno; then
 fi
 
 AC_CONFIG_FILES(Makefile contrib/Makefile doc/Makefile imap/Makefile
-	intl/Makefile m4/Makefile po/Makefile.in
+	intl/Makefile m4/Makefile po/Makefile.in unit-test/Makefile
 	hcachever.sh doc/instdoc.sh)
 AC_OUTPUT
 
