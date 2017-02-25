@@ -1196,7 +1196,10 @@ int mutt_resend_message (FILE *fp, CONTEXT *ctx, HEADER *cur)
   HEADER *msg = mutt_new_header ();
   
   if (mutt_prepare_template (fp, ctx, msg, cur, 1) < 0)
+  {
+    mutt_free_header (&msg);
     return -1;
+  }
 
   if (WithCrypto)
   {
@@ -1741,7 +1744,7 @@ ci_send_message (int flags,		/* send mode */
       }
     }
 
-    /* opportunistic encrypt relys on SMIME or PGP already being selected */
+    /* opportunistic encrypt relies on SMIME or PGP already being selected */
     if (option (OPTCRYPTOPPORTUNISTICENCRYPT))
     {
       /* If something has already enabled encryption, e.g. OPTCRYPTAUTOENCRYPT

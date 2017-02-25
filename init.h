@@ -22,6 +22,7 @@
 /* # include "makedoc-defs.h" include only documented options for Debian */
 #else
 # include "sort.h"
+# include "mx.h"
 #endif
 
 #include "buffy.h"
@@ -261,9 +262,9 @@ struct option_t MuttVars[] = {
   ** .dt %C  .dd charset
   ** .dt %c  .dd requires charset conversion (``n'' or ``c'')
   ** .dt %D  .dd deleted flag
-  ** .dt %d  .dd description
+  ** .dt %d  .dd description (if none, falls back to %F)
   ** .dt %e  .dd MIME content-transfer-encoding
-  ** .dt %F  .dd filename for content-disposition header
+  ** .dt %F  .dd filename in content-disposition header (if none, falls back to %f)
   ** .dt %f  .dd filename
   ** .dt %I  .dd disposition (``I'' for inline, ``A'' for attachment)
   ** .dt %m  .dd major MIME type
@@ -1280,6 +1281,14 @@ struct option_t MuttVars[] = {
   ** mailing list when this option is \fIset\fP, use the \fC$<list-reply>\fP
   ** function; \fC<group-reply>\fP will reply to both the sender and the
   ** list.
+  */
+  { "show_multipart_alternative", DT_STR, R_NONE, UL &ShowMultipartAlternative, 0 },
+  /*
+  ** .pp
+  ** When \fIset\fP to \fCinfo\fP, the multipart/alternative information is shown.
+  ** When \fIset\fP to \fCinline\fP, all of the alternatives are displayed.
+  ** When not set, the default behavior is to show only the chosen alternative.
+  ** .pp
   */
 #ifdef USE_IMAP
   { "imap_authenticators", DT_STR, R_NONE, UL &ImapAuthenticators, UL 0 },

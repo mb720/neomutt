@@ -7,12 +7,12 @@ dnl !!! TO DUMP THEIR RESULTS WHEN MUTT -V IS CALLED               !!!
 CFLAGS=$CFLAGS
 LDFLAGS=$LDFLAGS
 
-AC_INIT([NeoMutt], [20170206], [neomutt-devel@neomutt.org], [mutt], [https://www.neomutt.org])
+AC_INIT([NeoMutt], [20170225], [neomutt-devel@neomutt.org], [mutt], [https://www.neomutt.org])
 AC_CONFIG_SRCDIR(mutt.h)
 AM_INIT_AUTOMAKE
 AC_CONFIG_HEADERS([config.h])
 
-AC_DEFINE(MUTT_VERSION, "1.7.2", [Version of upstream Mutt])
+AC_DEFINE(MUTT_VERSION, "1.8.0", [Version of upstream Mutt])
 
 AC_USE_SYSTEM_EXTENSIONS
 
@@ -500,62 +500,6 @@ if test $ac_cv_func_getopt = yes; then
 	AC_CHECK_HEADERS(getopt.h)
 fi
 
-SNPRINTFOBJS=""
-AC_CHECK_FUNC(snprintf, [mutt_cv_func_snprintf=yes], [mutt_cv_func_snprintf=no])
-AC_CHECK_FUNC(vsnprintf, [mutt_cv_func_vsnprintf=yes], [mutt_cv_func_vsnprintf=no])
-if test $mutt_cv_func_snprintf = yes; then
-AC_CACHE_CHECK([whether your system's snprintf is C99 compliant],
-	[mutt_cv_c99_snprintf],
-	AC_RUN_IFELSE([AC_LANG_SOURCE([[
-#include <stdio.h>
-int main()
-{
-changequote(, )dnl
-  char buf[8];
-  int len = snprintf(buf, 4, "1234567");
-  return (len != 7 || buf[3] != '\0');
-changequote([, ])dnl
-}
-]])],[mutt_cv_c99_snprintf=yes],[mutt_cv_c99_snprintf=no],[mutt_cv_c99_snprintf=no]))
-else
-	mutt_cv_c99_snprintf=no
-fi
-if test $mutt_cv_func_vsnprintf = yes; then
-AC_CACHE_CHECK([whether your system's vsnprintf is C99 compliant],
-	[mutt_cv_c99_vsnprintf],
-	AC_RUN_IFELSE([AC_LANG_SOURCE([[
-#include <stdarg.h>
-#include <stdio.h>
-int foo(const char *fmt, ...)
-{
-changequote(, )dnl
-  char buf[8];
-  int len;
-  va_list ap;
-  va_start(ap, fmt);
-  len = vsnprintf(buf, 4, fmt, ap);
-  va_end(ap);
-  return (len != 7 || buf[3] != '\0');
-changequote([, ])dnl
-}
-int main()
-{
-  return foo("%s", "1234567");
-}
-]])],[mutt_cv_c99_vsnprintf=yes],[mutt_cv_c99_vsnprintf=no],[mutt_cv_c99_vsnprintf=no]))
-else
-	mutt_cv_c99_vsnprintf=no
-fi
-if test $mutt_cv_c99_snprintf = yes; then
-	AC_DEFINE(HAVE_SNPRINTF, 1, [ Define to 1 if you have a C99 compliant snprintf function. ])
-fi
-if test $mutt_cv_c99_vsnprintf = yes; then
-	AC_DEFINE(HAVE_VSNPRINTF, 1, [ Define to 1 if you have a C99 compliant vsnprintf function. ])
-fi
-if test $mutt_cv_c99_snprintf = no -o $mutt_cv_c99_vsnprintf = no; then
-	AC_LIBOBJ(snprintf)
-fi
-
 XIPH_FUNC_VA_COPY
 
 dnl SCO uses chsize() instead of ftruncate()
@@ -714,11 +658,12 @@ need_socket="no"
 
 dnl -- socket dependencies --
 
-dnl getaddrinfo is used by getdomain.c, and requires libnsl and
-dnl libsocket on some platforms
+dnl getaddrinfo/getaddrinfo_a is used by getdomain.c, and requires libnsl and
+dnl libsocket on some platforms, and libanl
 AC_CHECK_FUNC(gethostent, , AC_CHECK_LIB(nsl, gethostent))
 AC_CHECK_FUNC(setsockopt, , AC_CHECK_LIB(socket, setsockopt))
 AC_CHECK_FUNCS(getaddrinfo)
+AC_SEARCH_LIBS([getaddrinfo_a], [anl], [AC_DEFINE(HAVE_GETADDRINFO_A, 1, [Define to 1 if you have the `getaddrinfo_a' function.])])
 
 AS_IF([test x$use_pop = "xyes"], [
 	AC_DEFINE(USE_POP, 1, [Define if you want support for the POP3 protocol.])

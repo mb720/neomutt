@@ -52,6 +52,9 @@ get_color (int index, unsigned char *s)
     case MT_COLOR_INDEX_TAG:
       for (color = ColorIndexTagList; color; color = color->next)
       {
+        if (strncmp((const char *)(s+1), color->pattern,
+                    strlen(color->pattern)) == 0)
+          return color->pair;
         const char * transform = hash_find(TagTransforms, color->pattern);
         if (transform && (strncmp((const char *)(s+1),
             transform, strlen(transform)) == 0))
@@ -757,7 +760,7 @@ void mutt_menu_init (void)
 
 MUTTMENU *mutt_new_menu (int menu)
 {
-  MUTTMENU *p = (MUTTMENU *) safe_calloc (1, sizeof (MUTTMENU));
+  MUTTMENU *p = safe_calloc (1, sizeof (MUTTMENU));
 
   if ((menu < 0) || (menu >= MENU_MAX))
     menu = MENU_GENERIC;

@@ -265,8 +265,6 @@ static int url_parse_query(const char *url, char **filename, struct uri_tag **ta
   while (p && *p)
   {
     tag = safe_calloc(1, sizeof(struct uri_tag));
-    if (!tag)
-      goto err;
 
     if (!*tags)
       last = *tags = tag;
@@ -2111,6 +2109,7 @@ int nm_get_all_tags(CONTEXT *ctx, char **tag_list, int *tag_count)
   struct nm_ctxdata *data = get_ctxdata(ctx);
   notmuch_database_t *db = NULL;
   notmuch_tags_t *tags = NULL;
+  const char *tag;
   int rc = -1;
 
   if (!data)
@@ -2125,11 +2124,14 @@ int nm_get_all_tags(CONTEXT *ctx, char **tag_list, int *tag_count)
 
   while (notmuch_tags_valid(tags))
   {
-    if (tag_list != NULL)
+    tag = notmuch_tags_get(tags);
+    /* Skip empty string */
+    if (*tag)
     {
-      tag_list[*tag_count] = safe_strdup(notmuch_tags_get(tags));
+      if (tag_list != NULL)
+        tag_list[*tag_count] = safe_strdup(tag);
+      (*tag_count)++;
     }
-    (*tag_count)++;
     notmuch_tags_move_to_next(tags);
   }
 
@@ -2432,7 +2434,7 @@ static int nm_open_message(CONTEXT *ctx, MESSAGE *msg, int msgno)
     msg->fp = maildir_open_find_message(folder, cur->path, NULL);
 
   mutt_debug (1, "%s\n", __func__);
-  return 0;
+  return !msg->fp;
 }
 
 static int nm_close_message(CONTEXT *ctx, MESSAGE *msg)

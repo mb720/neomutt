@@ -43,6 +43,7 @@
 
 typedef int (*handler_t) (BODY *, STATE *);
 
+// clang-format off
 const int Index_hex[128] = {
     -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1,
     -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1,
@@ -64,6 +65,24 @@ const int Index_64[128] = {
     -1,26,27,28, 29,30,31,32, 33,34,35,36, 37,38,39,40,
     41,42,43,44, 45,46,47,48, 49,50,51,-1, -1,-1,-1,-1
 };
+// clang-format on
+
+static void print_part_line (STATE *s, BODY *b, int n)
+{
+  char length[5];
+  mutt_pretty_size (length, sizeof (length), b->length);
+  state_mark_attach (s);
+  char *charset = mutt_get_parameter ("charset", b->parameter);
+  if (n != 0)
+      state_printf (s, _("[-- Alternative Type #%d: "), n);
+  else
+      state_printf (s, _("[-- Type: "));
+  state_printf (s, _("%s/%s%s%s, Encoding: %s, Size: %s --]\n"),
+          TYPE (b), b->subtype,
+          charset ? "; charset=" : "",
+          charset ? charset : "",
+          ENCODING (b->encoding), length);
+}
 
 static void state_prefix_put (const char *d, size_t dlen, STATE *s)
 {
@@ -794,8 +813,8 @@ static int text_enriched_handler (BODY *a, STATE *s)
   stte.WrapMargin = ((s->flags & MUTT_DISPLAY) ? (MuttIndexWindow->cols-4) :
                      ((MuttIndexWindow->cols-4)<72)?(MuttIndexWindow->cols-4):72);
   stte.line_max = stte.WrapMargin * 4;
-  stte.line = (wchar_t *) safe_calloc (1, (stte.line_max + 1) * sizeof (wchar_t));
-  stte.param = (wchar_t *) safe_calloc (1, (STRING) * sizeof (wchar_t));
+  stte.line = safe_calloc (1, (stte.line_max + 1) * sizeof (wchar_t));
+  stte.param = safe_calloc (1, (STRING) * sizeof (wchar_t));
 
   stte.param_len = STRING;
   stte.param_used = 0;
@@ -1004,6 +1023,7 @@ static int alternative_handler (BODY *a, STATE *s)
   int type = 0;
   int mustfree = 0;
   int rc = 0;
+  int count = 0;
 
   if (a->encoding == ENCBASE64 || a->encoding == ENCQUOTEDPRINTABLE ||
       a->encoding == ENCUUENCODED)
@@ -1130,7 +1150,32 @@ static int alternative_handler (BODY *a, STATE *s)
       fseeko (s->fpin, choice->hdr_offset, 0);
       mutt_copy_bytes(s->fpin, s->fpout, choice->offset-choice->hdr_offset);
     }
+
+    if (mutt_strcmp ("info", ShowMultipartAlternative) == 0)
+    {
+      print_part_line (s, choice, 0);
+    }
     mutt_body_handler (choice, s);
+
+    if (mutt_strcmp ("info", ShowMultipartAlternative) == 0)
+    {
+      if (a && a->parts)
+        b = a->parts;
+      else
+        b = a;
+      while (b)
+      {
+        if (choice != b)
+        {
+          count += 1;
+          if (count == 1)
+            state_putc ('\n', s);
+
+          print_part_line (s, b, count);
+        }
+        b = b->next;
+      }
+    }
   }
   else if (s->flags & MUTT_DISPLAY)
   {
@@ -1228,7 +1273,6 @@ int mutt_can_decode (BODY *a)
 static int multipart_handler (BODY *a, STATE *s)
 {
   BODY *b, *p;
-  char length[5];
   struct stat st;
   int count;
   int rc = 0;
@@ -1259,12 +1303,7 @@ static int multipart_handler (BODY *a, STATE *s)
 		    p->filename ? p->filename : p->form_name, s);
       }
       state_puts (" --]\n", s);
-
-      mutt_pretty_size (length, sizeof (length), p->length);
-      
-      state_mark_attach (s);
-      state_printf (s, _("[-- Type: %s/%s, Encoding: %s, Size: %s --]\n"),
-		    TYPE (p), p->subtype, ENCODING (p->encoding), length);
+      print_part_line (s, p, 0);
       if (!option (OPTWEED))
       {
 	fseeko (s->fpin, p->hdr_offset, 0);
@@ -1794,7 +1833,7 @@ int mutt_body_handler (BODY *b, STATE *s)
   {
     char *p;
 
-    if (ascii_strcasecmp ("alternative", b->subtype) == 0)
+    if ((mutt_strcmp ("inline", ShowMultipartAlternative) != 0) && (ascii_strcasecmp ("alternative", b->subtype) == 0))
       handler = alternative_handler;
     else if (WithCrypto && ascii_strcasecmp ("signed", b->subtype) == 0)
     {
