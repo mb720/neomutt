@@ -57,6 +57,12 @@ static int entropy_byte_count = 0;
 
 /* index for storing hostname as application specific data in SSL structure */
 static int HostExDataIndex = -1;
+
+/* Index for storing the "skip mode" state in SSL structure.  When the
+ * user skips a certificate in the chain, the stored value will be
+ * non-null. */
+static int SkipModeExDataIndex = -1;
+
 /* keep a handle on accepted certificates in case we want to
  * open up another connection to the same server in this session */
 static STACK_OF(X509) *SslSessionCerts = NULL;
@@ -82,7 +88,7 @@ static void ssl_err (sslsockdata *data, int err);
 static void ssl_dprint_err_stack (void);
 static int ssl_cache_trusted_cert (X509 *cert);
 static int ssl_verify_callback (int preverify_ok, X509_STORE_CTX *ctx);
-static int interactive_check_cert (X509 *cert, int idx, int len);
+static int interactive_check_cert (X509 *cert, int idx, int len, SSL *ssl);
 static void ssl_get_client_cert(sslsockdata *ssldata, CONNECTION *conn);
 static int ssl_passwd_cb(char *buf, int size, int rwflag, void *userdata);
 static int ssl_negotiate (CONNECTION *conn, sslsockdata*);
@@ -99,6 +105,7 @@ static int ssl_load_certificates (SSL_CTX *ctx)
   X509 *cert = NULL;
   X509_STORE *store;
   char buf[STRING];
+  int rv = 1;
 
   mutt_debug (2, "ssl_load_certificates: loading trusted certificates\n");
   store = SSL_CTX_get_cert_store (ctx);
@@ -124,10 +131,15 @@ static int ssl_load_certificates (SSL_CTX *ctx)
       X509_STORE_add_cert (store, cert);
     }
   }
+  /* PEM_read_X509 sets the error NO_START_LINE on eof */
+  if (ERR_GET_REASON(ERR_peek_last_error()) != PEM_R_NO_START_LINE)
+    rv = 0;
+  ERR_clear_error();
+
   X509_free (cert);
   safe_fclose (&fp);
 
-  return 1;
+  return rv;
 }
 
 /* mutt_ssl_starttls: Negotiate TLS over an already opened connection.
@@ -492,8 +504,21 @@ static int ssl_negotiate (CONNECTION *conn, sslsockdata* ssldata)
     return -1;
   }
 
+  if ((SkipModeExDataIndex = SSL_get_ex_new_index (0, "skip", NULL, NULL, NULL)) == -1)
+  {
+    mutt_debug (1, "failed to get index for application specific data\n");
+    return -1;
+  }
+
+  if (! SSL_set_ex_data (ssldata->ssl, SkipModeExDataIndex, NULL))
+  {
+    mutt_debug (1, "failed to save skip mode in SSL structure\n");
+    return -1;
+  }
+
   SSL_set_verify (ssldata->ssl, SSL_VERIFY_PEER, ssl_verify_callback);
   SSL_set_mode (ssldata->ssl, SSL_MODE_AUTO_RETRY);
+  ERR_clear_error ();
 
 #if (OPENSSL_VERSION_NUMBER >= 0x0090806fL) && !defined(OPENSSL_NO_TLSEXT)
   /* TLS Virtual-hosting requires that the server present the correct
@@ -784,6 +809,9 @@ static int check_certificate_by_digest (X509 *peercert)
     if (pass)
       break;
   }
+  /* PEM_read_X509 sets an error on eof */
+  if (!pass)
+    ERR_clear_error();
   X509_free (cert);
   safe_fclose (&fp);
 
@@ -949,6 +977,7 @@ static int ssl_verify_callback (int preverify_ok, X509_STORE_CTX *ctx)
   int len, pos;
   X509 *cert;
   SSL *ssl;
+  int skip_mode;
 
   if (! (ssl = X509_STORE_CTX_get_ex_data (ctx, SSL_get_ex_data_X509_STORE_CTX_idx ())))
   {
@@ -961,18 +990,28 @@ static int ssl_verify_callback (int preverify_ok, X509_STORE_CTX *ctx)
     return 0;
   }
 
+  /* This is true when a previous entry in the certificate chain did not verify
+   * and the user either automatically or manually chose to skip it via
+   * the $ssl_verify_partial_chains quadoption.
+   * In this case, all following certificates need to be treated as non-verified
+   * until one is actually verified.
+   */
+  skip_mode = (SSL_get_ex_data (ssl, SkipModeExDataIndex) != NULL);
+
   cert = X509_STORE_CTX_get_current_cert (ctx);
   pos = X509_STORE_CTX_get_error_depth (ctx);
   len = sk_X509_num (X509_STORE_CTX_get_chain (ctx));
 
-  mutt_debug (1, "ssl_verify_callback: checking cert chain entry %s (preverify: %d)\n",
-              X509_NAME_oneline (X509_get_subject_name (cert),
-                                 buf, sizeof (buf)), preverify_ok);
+  mutt_debug (1, "ssl_verify_callback: checking cert chain entry %s"
+      "(preverify: %d skipmode: %d)\n",
+      X509_NAME_oneline (X509_get_subject_name (cert), buf, sizeof (buf)),
+      preverify_ok, skip_mode);
 
   /* check session cache first */
   if (check_certificate_cache (cert))
   {
     mutt_debug (2, "ssl_verify_callback: using cached certificate\n");
+    SSL_set_ex_data (ssl, SkipModeExDataIndex, NULL);
     return 1;
   }
 
@@ -984,17 +1023,18 @@ static int ssl_verify_callback (int preverify_ok, X509_STORE_CTX *ctx)
     {
       mutt_error (_("Certificate host check failed: %s"), buf);
       mutt_sleep (2);
-      return interactive_check_cert (cert, pos, len);
+      return interactive_check_cert (cert, pos, len, ssl);
     }
     mutt_debug (2, "ssl_verify_callback: hostname check passed\n");
   }
 
-  if (!preverify_ok)
+  if (!preverify_ok || skip_mode)
   {
     /* automatic check from user's database */
     if (SslCertFile && check_certificate_by_digest (cert))
     {
       mutt_debug (2, "ssl_verify_callback: digest check passed\n");
+      SSL_set_ex_data (ssl, SkipModeExDataIndex, NULL);
       return 1;
     }
 
@@ -1008,14 +1048,20 @@ static int ssl_verify_callback (int preverify_ok, X509_STORE_CTX *ctx)
     }
 #endif
 
+    if ((pos != 0) && (quadoption (OPT_SSLVERIFYPARTIAL) == MUTT_YES))
+    {
+      SSL_set_ex_data (ssl, SkipModeExDataIndex, &SkipModeExDataIndex);
+      return 1;
+    }
+
     /* prompt user */
-    return interactive_check_cert (cert, pos, len);
+    return interactive_check_cert (cert, pos, len, ssl);
   }
 
   return 1;
 }
 
-static int interactive_check_cert (X509 *cert, int idx, int len)
+static int interactive_check_cert (X509 *cert, int idx, int len, SSL *ssl)
 {
   static const int part[] =
     { NID_commonName,             /* CN */
@@ -1034,6 +1080,7 @@ static int interactive_check_cert (X509 *cert, int idx, int len)
   int done, row, i;
   unsigned u;
   FILE *fp;
+  int allow_always = 0, allow_skip = 0;
 
   menu->max = mutt_array_size (part) * 2 + 10;
   menu->dialog = safe_calloc (1, menu->max * sizeof (char *));
@@ -1075,18 +1122,37 @@ static int interactive_check_cert (X509 *cert, int idx, int len)
 	    _("SSL Certificate check (certificate %d of %d in chain)"),
 	    len - idx, len);
   menu->title = title;
+
+  /* The leaf/host certificate can't be skipped. */
+  if ((idx != 0) &&
+      ((quadoption (OPT_SSLVERIFYPARTIAL) == MUTT_ASKNO) ||
+       (quadoption (OPT_SSLVERIFYPARTIAL) == MUTT_ASKYES)))
+    allow_skip = 1;
+
+  /* L10N:
+   * These four letters correspond to the choices in the next four strings:
+   * (r)eject, accept (o)nce, (a)ccept always, (s)kip.
+   * These prompts are the interactive certificate confirmation prompts for
+   * an OpenSSL connection.
+   */
+  menu->keys = _("roas");
   if (SslCertFile
       && (option (OPTSSLVERIFYDATES) == MUTT_NO
 	  || (X509_cmp_current_time (X509_get_notAfter (cert)) >= 0
 	      && X509_cmp_current_time (X509_get_notBefore (cert)) < 0)))
   {
-    menu->prompt = _("(r)eject, accept (o)nce, (a)ccept always");
-    menu->keys = _("roa");
+    allow_always = 1;
+    if (allow_skip)
+      menu->prompt = _("(r)eject, accept (o)nce, (a)ccept always, (s)kip");
+    else
+      menu->prompt = _("(r)eject, accept (o)nce, (a)ccept always");
   }
   else
   {
-    menu->prompt = _("(r)eject, accept (o)nce");
-    menu->keys = _("ro");
+    if (allow_skip)
+      menu->prompt = _("(r)eject, accept (o)nce, (s)kip");
+    else
+      menu->prompt = _("(r)eject, accept (o)nce");
   }
 
   helpstr[0] = '\0';
@@ -1108,6 +1174,8 @@ static int interactive_check_cert (X509 *cert, int idx, int len)
         done = 1;
         break;
       case OP_MAX + 3:		/* accept always */
+        if (!allow_always)
+          break;
         done = 0;
         if ((fp = fopen (SslCertFile, "a")))
 	{
@@ -1128,7 +1196,14 @@ static int interactive_check_cert (X509 *cert, int idx, int len)
         /* fall through */
       case OP_MAX + 2:		/* accept once */
         done = 2;
+        SSL_set_ex_data (ssl, SkipModeExDataIndex, NULL);
 	ssl_cache_trusted_cert (cert);
+        break;
+      case OP_MAX + 4:    /* skip */
+        if (!allow_skip)
+          break;
+        done = 2;
+        SSL_set_ex_data (ssl, SkipModeExDataIndex, &SkipModeExDataIndex);
         break;
     }
   }

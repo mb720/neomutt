@@ -318,6 +318,9 @@ enum
   OPT_RECALL,
 #if defined(USE_SSL)
   OPT_SSLSTARTTLS,
+# ifdef USE_SSL_OPENSSL
+  OPT_SSLVERIFYPARTIAL,
+# endif /* USE_SSL_OPENSSL */
 #endif
   OPT_SUBJECT,
   OPT_VERIFYSIG,      /* verify PGP signatures */

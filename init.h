@@ -3829,6 +3829,27 @@ struct option_t MuttVars[] = {
   ** URL. You should only unset this for particular known hosts, using
   ** the \fC$<account-hook>\fP function.
   */
+# ifdef USE_SSL_OPENSSL
+  { "ssl_verify_partial_chains", DT_QUAD, R_NONE, OPT_SSLVERIFYPARTIAL, MUTT_NO },
+  /*
+  ** .pp
+  ** This option should not be changed from the default unless you understand
+  ** what you are doing.
+  ** .pp
+  ** Setting this variable to \fIyes\fP will cause OpenSSL to automatically skip
+  ** unverified nodes in the certificate chain.  This could be desirable if you
+  ** do not want to rely on the system certificates, and only want to keep host
+  ** or intermediate certs in your $$certificate_file.
+  ** .pp
+  ** The \fIask-yes\fP and \fIask-no\fP settings are equivalent: they add
+  ** a (s)kip option to the interactive certificate prompt.  Mutt will not
+  ** remember skipped certificate nodes upon future connections.  However, this
+  ** setting could be useful to initially save desired certificates in the
+  ** chain to your $$certificate_file.
+  ** .pp
+  ** (OpenSSL only).
+  */
+# endif /* defined USE_SSL_OPENSSL */
   { "ssl_ciphers", DT_STR, R_NONE, UL &SslCiphers, UL 0 },
   /*
   ** .pp
