@@ -642,7 +642,7 @@ static size_t convert_file_to (FILE *file, const char *fromcode,
 #ifdef HAVE_ICONV
   iconv_t cd1, *cd;
   char bufi[256], bufu[512], bufo[4 * sizeof (bufi)];
-  ICONV_CONST char *ib, *ub;
+  char *ib, *ub;
   char *ob;
   size_t ibl, obl, ubl, ubl1, n, ret;
   int i;

@@ -106,7 +106,7 @@ void mutt_set_charset (char *charset)
 static size_t wcrtomb_iconv (char *s, wchar_t wc, iconv_t cd)
 {
   char buf[MB_LEN_MAX+1];
-  ICONV_CONST char *ib;
+  char *ib;
   char *ob;
   size_t ibl, obl;
 
@@ -157,7 +157,7 @@ size_t mbrtowc_iconv (wchar_t *pwc, const char *s, size_t n,
 		      mbstate_t *ps, iconv_t cd)
 {
   static mbstate_t mbstate;
-  ICONV_CONST char *ib, *ibmax;
+  char *ib, *ibmax;
   char *ob, *t;
   size_t ibl, obl, k, r;
   char bufi[8], bufo[6];
@@ -180,8 +180,8 @@ size_t mbrtowc_iconv (wchar_t *pwc, const char *s, size_t n,
   else
   {
     /* use the real input */
-    ib = (ICONV_CONST char*) s;
-    ibmax = (ICONV_CONST char*) s + n;
+    ib = (char*) s;
+    ibmax = (char*) s + n;
   }
 
   ob = bufo;
@@ -206,8 +206,8 @@ size_t mbrtowc_iconv (wchar_t *pwc, const char *s, size_t n,
       else if (k && ib > bufi + k && bufi + k + n > ibmax)
       {
 	/* switch to using real input */
-	ib = (ICONV_CONST char*) s + (ib - bufi - k);
-	ibmax = (ICONV_CONST char*) s + n;
+	ib = (char*) s + (ib - bufi - k);
+	ibmax = (char*) s + n;
 	k = 0;
 	++ibl;
       }

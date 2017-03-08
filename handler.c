@@ -97,7 +97,7 @@ static void state_prefix_put (const char *d, size_t dlen, STATE *s)
 static void mutt_convert_to_state(iconv_t cd, char *bufi, size_t *l, STATE *s)
 {
   char bufo[BUFO_SIZE];
-  ICONV_CONST char *ib;
+  char *ib;
   char *ob;
   size_t ibl, obl;
 
