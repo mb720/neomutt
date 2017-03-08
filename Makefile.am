@@ -73,7 +73,7 @@ EXTRA_mutt_SOURCES = account.c bcache.c compress.c crypt-gpgme.c crypt-mod-pgp-c
 	sidebar.c smime.c smtp.c utf8.c wcwidth.c \
 	bcache.h browser.h hcache.h mbyte.h mutt_idna.h remailer.h url.h
 
-EXTRA_DIST = COPYRIGHT LICENSE.md OPS OPS.PGP OPS.CRYPT OPS.SMIME TODO UPDATING \
+EXTRA_DIST = config.rpath  COPYRIGHT LICENSE.md OPS OPS.PGP OPS.CRYPT OPS.SMIME TODO UPDATING \
 	account.h \
 	attach.h buffer.h buffy.h charset.h compress.h copy.h crypthash.h dotlock.h functions.h gen_defs \
 	filter.h globals.h hash.h history.h init.h keymap.h mutt_crypt.h myvar.h \
