@@ -89,7 +89,7 @@ static void ssl_err (sslsockdata *data, int err);
 static void ssl_dprint_err_stack (void);
 static int ssl_cache_trusted_cert (X509 *cert);
 static int ssl_verify_callback (int preverify_ok, X509_STORE_CTX *ctx);
-static int interactive_check_cert (X509 *cert, int idx, int len, SSL *ssl);
+static int interactive_check_cert (X509 *cert, int idx, int len, SSL *ssl, int allow_always);
 static void ssl_get_client_cert(sslsockdata *ssldata, CONNECTION *conn);
 static int ssl_passwd_cb(char *buf, int size, int rwflag, void *userdata);
 static int ssl_negotiate (CONNECTION *conn, sslsockdata*);
@@ -1029,6 +1029,12 @@ static int ssl_verify_callback (int preverify_ok, X509_STORE_CTX *ctx)
   X509 *cert;
   SSL *ssl;
   int skip_mode;
+#ifdef HAVE_SSL_PARTIAL_CHAIN
+  static int last_pos = 0;
+  static X509 *last_cert = NULL;
+  unsigned char last_cert_md[EVP_MAX_MD_SIZE];
+  unsigned int last_cert_mdlen;
+#endif
 
   if (! (ssl = X509_STORE_CTX_get_ex_data (ctx, SSL_get_ex_data_X509_STORE_CTX_idx ())))
   {
@@ -1058,6 +1064,31 @@ static int ssl_verify_callback (int preverify_ok, X509_STORE_CTX *ctx)
               X509_NAME_oneline (X509_get_subject_name (cert), buf, sizeof (buf)),
               preverify_ok, skip_mode));
 
+#ifdef HAVE_SSL_PARTIAL_CHAIN
+  /* Sometimes, when a certificate is (s)kipped, OpenSSL will pass it
+   * a second time with preverify_ok = 1.  Don't show it or the user
+   * will think their "s" key is broken.
+   */
+  if (option (OPTSSLVERIFYPARTIAL))
+  {
+    if (skip_mode && preverify_ok && (pos == last_pos) && last_cert)
+    {
+      if (X509_digest (last_cert, EVP_sha1(), last_cert_md, &last_cert_mdlen) &&
+          !compare_certificates (cert, last_cert, last_cert_md, last_cert_mdlen))
+      {
+        dprint (2, (debugfile,
+                    "ssl_verify_callback: ignoring duplicate skipped certificate.\n"));
+        return 1;
+      }
+    }
+
+    last_pos = pos;
+    if (last_cert)
+      X509_free (last_cert);
+    last_cert = X509_dup (cert);
+  }
+#endif
+
   /* check session cache first */
   if (check_certificate_cache (cert))
   {
@@ -1074,7 +1105,9 @@ static int ssl_verify_callback (int preverify_ok, X509_STORE_CTX *ctx)
     {
       mutt_error (_("Certificate host check failed: %s"), buf);
       mutt_sleep (2);
-      return interactive_check_cert (cert, pos, len, ssl);
+      /* we disallow (a)ccept always in the prompt, because it will have no effect
+       * for hostname mismatches. */
+      return interactive_check_cert (cert, pos, len, ssl, 0);
     }
     dprint (2, (debugfile, "ssl_verify_callback: hostname check passed\n"));
   }
@@ -1100,13 +1133,13 @@ static int ssl_verify_callback (int preverify_ok, X509_STORE_CTX *ctx)
 #endif
 
    /* prompt user */
-    return interactive_check_cert (cert, pos, len, ssl);
+    return interactive_check_cert (cert, pos, len, ssl, 1);
   }
 
   return 1;
 }
 
-static int interactive_check_cert (X509 *cert, int idx, int len, SSL *ssl)
+static int interactive_check_cert (X509 *cert, int idx, int len, SSL *ssl, int allow_always)
 {
   static const int part[] =
     { NID_commonName,             /* CN */
@@ -1125,7 +1158,7 @@ static int interactive_check_cert (X509 *cert, int idx, int len, SSL *ssl)
   int done, row, i;
   unsigned u;
   FILE *fp;
-  int allow_always = 0, allow_skip = 0;
+  int allow_skip = 0;
 
   menu->max = mutt_array_size (part) * 2 + 10;
   menu->dialog = (char **) safe_calloc (1, menu->max * sizeof (char *));
@@ -1175,6 +1208,15 @@ static int interactive_check_cert (X509 *cert, int idx, int len, SSL *ssl)
     allow_skip = 1;
 #endif
 
+  /* Inside ssl_verify_callback(), this function is guarded by a call to
+   * check_certificate_by_digest().  This means if check_certificate_expiration() is
+   * true, then check_certificate_file() must be false.  Therefore we don't need
+   * to also scan the certificate file here.
+   */
+  allow_always = allow_always &&
+                 SslCertFile &&
+                 check_certificate_expiration (cert, 1);
+
   /* L10N:
    * These four letters correspond to the choices in the next four strings:
    * (r)eject, accept (o)nce, (a)ccept always, (s)kip.
@@ -1182,11 +1224,8 @@ static int interactive_check_cert (X509 *cert, int idx, int len, SSL *ssl)
    * an OpenSSL connection.
    */
   menu->keys = _("roas");
-  if (SslCertFile &&
-      check_certificate_expiration (cert, 1) &&
-      !check_certificate_file (cert))
+  if (allow_always)
   {
-    allow_always = 1;
     if (allow_skip)
       menu->prompt = _("(r)eject, accept (o)nce, (a)ccept always, (s)kip");
     else
