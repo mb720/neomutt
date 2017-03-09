@@ -34,6 +34,7 @@ addons:
       - docbook-xsl
       - libxml2-utils
       - gettext
+      - autopoint
 
 git:
   depth: 3
