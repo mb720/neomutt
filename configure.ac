@@ -1166,11 +1166,15 @@ AC_ARG_ENABLE(iconv, AS_HELP_STRING([--disable-iconv],[Disable iconv support]),
 	fi
 ])
 
+AM_GNU_GETTEXT_VERSION([0.19.8])
 AM_GNU_GETTEXT([external])
+AC_CHECK_HEADERS([locale.h])
 
 if test "$am_cv_func_iconv" != "yes"; then
 	AC_MSG_WARN([Configuring without iconv support. See INSTALL for details])
 else
+
+MUTT_AM_ICONV
 
 AC_CHECK_HEADERS(iconv.h,
 	[AC_MSG_CHECKING(whether iconv.h defines iconv_t)
