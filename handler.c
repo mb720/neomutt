@@ -249,13 +249,14 @@ static void qp_decode_line (char *dest, char *src, size_t *l,
  * 
  */
 
-static void mutt_decode_quoted (STATE *s, long len, int istext, iconv_t cd)
+static void mutt_decode_quoted (STATE *s, long len, int istext, iconv_t cd, iconv_t cp1252_cd)
 {
   char line[STRING];
   char decline[2*STRING];
   size_t l = 0;
   size_t linelen;      /* number of input bytes in `line' */
   size_t l3;
+  bool usecp1252 = false;
   
   int last;    /* store the last character in the input line */
   
@@ -296,7 +297,22 @@ static void mutt_decode_quoted (STATE *s, long len, int istext, iconv_t cd)
     /* decode and do character set conversion */
     qp_decode_line (decline + l, line, &l3, last);
     l += l3;
-    mutt_convert_to_state (cd, decline, &l, s);
+
+    /* check whether we potentially need iso-8859-1 -> cp1252 conversion */
+    if (cp1252_cd != (iconv_t)-1)
+    {
+      for (size_t i = 0; i < l; ++i)
+      {
+        unsigned char uc = decline[i];
+        if (uc >= 0x80 && uc <= 0x9f)
+        {
+          usecp1252 = true;
+          break;
+        }
+      }
+    }
+
+    mutt_convert_to_state (usecp1252 ? cp1252_cd  : cd, decline, &l, s);
   }
 
   mutt_convert_to_state (cd, 0, 0, s);
@@ -1572,23 +1588,30 @@ void mutt_decode_attachment (BODY *b, STATE *s)
 {
   int istext = mutt_is_text_part (b);
   iconv_t cd = (iconv_t)(-1);
+  iconv_t cp1252_cd = (iconv_t)(-1);
+  char *charset = NULL;
 
   if (istext && s->flags & MUTT_CHARCONV)
   {
-    char *charset = mutt_get_parameter ("charset", b->parameter);
+    charset = mutt_get_parameter ("charset", b->parameter);
     if (!charset && AssumedCharset && *AssumedCharset)
       charset = mutt_get_default_charset ();
-    if (charset && Charset)
-      cd = mutt_iconv_open (Charset, charset, MUTT_ICONV_HOOK_FROM);
   }
   else if (istext && b->charset)
-    cd = mutt_iconv_open (Charset, b->charset, MUTT_ICONV_HOOK_FROM);
+    charset = b->charset;
+
+  if (charset && Charset)
+  {
+    cd = mutt_iconv_open (Charset, charset, MUTT_ICONV_HOOK_FROM);
+    if (strcmp(charset, "iso-8859-1") == 0)
+      cp1252_cd = mutt_iconv_open (Charset, "cp1252", MUTT_ICONV_HOOK_FROM);
+  }
 
   fseeko (s->fpin, b->offset, 0);
   switch (b->encoding)
   {
     case ENCQUOTEDPRINTABLE:
-      mutt_decode_quoted (s, b->length, istext || ((WithCrypto & APPLICATION_PGP) && mutt_is_application_pgp (b)), cd);
+      mutt_decode_quoted (s, b->length, istext || ((WithCrypto & APPLICATION_PGP) && mutt_is_application_pgp (b)), cd, cp1252_cd);
       break;
     case ENCBASE64:
       mutt_decode_base64 (s, b->length, istext || ((WithCrypto & APPLICATION_PGP) && mutt_is_application_pgp (b)), cd);
@@ -1603,6 +1626,9 @@ void mutt_decode_attachment (BODY *b, STATE *s)
 
   if (cd != (iconv_t)(-1))
     iconv_close (cd);
+
+  if (cp1252_cd != (iconv_t)(-1))
+    iconv_close (cp1252_cd);
 }
 
 /* when generating format=flowed ($text_flowed is set) from format=fixed,
